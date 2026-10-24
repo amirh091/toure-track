@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/app-icon-180.png">
+    <link rel="icon" type="image/svg+xml" href="assets/app-icon.svg">
+    <title>TOURE-TRACK - Chauffeurs</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <button class="menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="sidebar" aria-expanded="false" onclick="toggleMenu()">☰</button>
+    <aside class="sidebar" id="sidebar">
+        <div class="logo" style="justify-content: center;">
+            <img src="assets/logo-toure-track-sidebar.svg" alt="TOURE-TRACK" style="height: 40px; width: auto;">
+        </div>
+        <nav>
+            <a href="index.html">📊 Tableau de bord</a>
+            <a href="colis.html">📦 Colis</a>
+            <a href="camionnettes.html">🚐 Camionnettes</a>
+            <a href="chauffeurs.html" class="active">👨‍✈️ Chauffeurs</a>
+            <a href="employes.html">👨‍✈️ Employés</a>
+            <a href="parametres.html">⚙️ Paramètres</a>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <header>
+            <h1>Gestion des Chauffeurs</h1>
+            <button class="btn btn-primary" onclick="ouvrirModalChauffeur()">+ Ajouter un chauffeur</button>
+        </header>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nom</th>
+                        <th>Téléphone</th>
+                        <th>Camionnette assignée</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="liste-chauffeurs">
+                    <!-- Rempli par le JS -->
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- MODAL D'AJOUT -->
+    <div id="modal-chauffeur" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Ajouter un chauffeur</h2>
+            <form id="form-chauffeur">
+                <div class="form-group">
+                    <label>Nom du chauffeur *</label>
+                    <input type="text" id="nom-chauffeur" placeholder="Ex: Moussa Diop" required>
+                </div>
+                <div class="form-group">
+                    <label>Téléphone</label>
+                    <input type="tel" id="tel-chauffeur" placeholder="Ex: +33 6 12 34 56 78">
+                </div>
+                <div class="form-group">
+                    <label>Assigner à une camionnette</label>
+                    <select id="camionnette-chauffeur">
+                        <option value="">Aucune</option>
+                        <!-- Rempli par le JS -->
+                    </select>
+                </div>
+                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-outline" onclick="fermerModalChauffeur()">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script>
+        let user = null;
+        let camionsList = [];
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const { data: { user: authUser } } = await supabaseClient.auth.getUser();
+            if (!authUser) return window.location.href = 'index.html';
+            user = authUser;
+            
+            // Charger les camions pour le menu déroulant
+            const { data: camions } = await supabaseClient.from('camionnettes').select('*').eq('user_id', user.id);
+            camionsList = camions || [];
+            const select = document.getElementById('camionnette-chauffeur');
+            camionsList.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.nom;
+                select.appendChild(opt);
+            });
+
+            chargerChauffeurs();
+        });
+
+        async function chargerChauffeurs() {
+            const { data, error } = await supabaseClient
+                .from('chauffeurs')
+                .select('*, camionnettes(nom)')
+                .eq('user_id', user.id);
+
+            if (error) return console.error(error);
+            
+            const tbody = document.getElementById('liste-chauffeurs');
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color: #666;">Aucun chauffeur enregistré.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = data.map(c => `
+                <tr>
+                    <td><strong>${c.nom}</strong></td>
+                    <td>${c.telephone || '-'}</td>
+                    <td>${c.camionnettes ? c.camionnettes.nom : '<span style="color: #999;">Non assigné</span>'}</td>
+                    <td>
+                        <button class="btn btn-danger" style="padding: 0.3rem 0.8rem; font-size: 0.8rem;" onclick="supprimerChauffeur(${c.id})">Supprimer</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        document.getElementById('form-chauffeur').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.textContent = "Enregistrement...";
+            btn.disabled = true;
+
+            const nom = document.getElementById('nom-chauffeur').value;
+            const tel = document.getElementById('tel-chauffeur').value;
+            const camionId = document.getElementById('camionnette-chauffeur').value || null;
+
+            const { error } = await supabaseClient.from('chauffeurs').insert([{
+                user_id: user.id,
+                nom: nom,
+                telephone: tel,
+                camionnette_id: camionId
+            }]);
+
+            if (error) {
+                afficherNotification("Erreur : " + error.message, 'error');
+            } else {
+                fermerModalChauffeur();
+                document.getElementById('form-chauffeur').reset();
+                chargerChauffeurs();
+                afficherNotification("Le chauffeur a bien été ajouté.", 'success');
+            }
+            btn.textContent = "Enregistrer";
+            btn.disabled = false;
+        });
+
+        window.ouvrirModalChauffeur = () => document.getElementById('modal-chauffeur').classList.add('active');
+        window.fermerModalChauffeur = () => document.getElementById('modal-chauffeur').classList.remove('active');
+
+        window.supprimerChauffeur = async (id) => {
+            if (!await confirmerAction({
+                title: 'Supprimer ce chauffeur ?',
+                message: 'Cette action est définitive. Le chauffeur sera retiré de votre liste.',
+                confirmText: 'Supprimer',
+                danger: true
+            })) return;
+            const { error } = await supabaseClient.from('chauffeurs').delete().eq('id', id);
+            if (error) afficherNotification("Erreur : " + error.message, 'error');
+            else {
+                chargerChauffeurs();
+                afficherNotification("Le chauffeur a été supprimé.", 'success');
+            }
+        };
+    </script>
+</body>
+</html>

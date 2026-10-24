@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <!-- Fond bleu nuit avec coins très arrondis -->
+  <rect width="500" height="500" rx="100" fill="#0f172a" />
+
+  <!-- Les 6 carrés colorés (centrés) -->
+  <g transform="translate(130, 130)">
+    <!-- Ligne 1 -->
+    <rect x="0" y="0" width="70" height="70" rx="15" fill="#3b82f6" />   <!-- Bleu -->
+    <rect x="85" y="0" width="70" height="70" rx="15" fill="#22c55e" />  <!-- Vert -->
+    <rect x="170" y="0" width="70" height="70" rx="15" fill="#eab308" /> <!-- Jaune -->
+    <!-- Ligne 2 -->
+    <rect x="0" y="85" width="70" height="70" rx="15" fill="#ef4444" />  <!-- Rouge -->
+    <rect x="85" y="85" width="70" height="70" rx="15" fill="#a855f7" /> <!-- Violet -->
+    <rect x="170" y="85" width="70" height="70" rx="15" fill="#06b6d4" /> <!-- Cyan -->
+  </g>
+
+  <!-- Ligne jaune -->
+  <rect x="100" y="310" width="300" height="12" rx="6" fill="#eab308" />
+
+  <!-- Texte TOURE-TRACK -->
+  <text x="250" y="400" font-family="'Segoe UI', Arial, sans-serif" font-size="46" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="2">TOURE-TRACK</text>
+</svg>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/app-icon-180.png">
+    <link rel="icon" type="image/svg+xml" href="assets/app-icon.svg">
+    <title>TOURE-TRACK - Connexion</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        body { display: flex; justify-content: center; align-items: center; min-height: 100vh; min-height: 100dvh; padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); background: var(--bg); }
+        .auth-box { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: min(100%, 400px); text-align: center; }
+        .auth-box input { width: 100%; padding: 0.8rem; margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="auth-box">
+        <div class="logo" style="font-size: 1.8rem; color: var(--primary); margin-bottom: 1.5rem;">🚚 TOURE-TRACK</div>
+        <h2 style="margin-bottom: 1.5rem;">Connexion</h2>
+        <form id="form-auth">
+            <input type="email" id="email" placeholder="Email" required>
+            <input type="password" id="password" placeholder="Mot de passe" required minlength="6">
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Se connecter</button>
+        </form>
+        <p style="margin-top: 1rem; font-size: 0.9rem;">
+            Pas de compte ? <a href="#" onclick="inscription()" style="color: var(--primary);">S'inscrire</a>
+        </p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script>
+        document.getElementById('form-auth').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const btn = e.target.querySelector('button');
+            btn.textContent = "Chargement...";
+
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            if (error) {
+                afficherNotification("Erreur : " + error.message, 'error');
+                btn.textContent = "Se connecter";
+                return;
+            }
+
+            const { data: profil, error: profilError } = await supabaseClient
+                .from('profils')
+                .select('role')
+                .eq('user_id', data.user.id)
+                .single();
+
+            if (profilError) {
+                afficherNotification("Erreur : impossible de vérifier votre rôle. " + profilError.message, 'error');
+                const { error: signOutError } = await supabaseClient.auth.signOut();
+                if (signOutError) {
+                    console.error("Erreur de déconnexion après échec de vérification du rôle :", signOutError);
+                }
+                btn.textContent = "Se connecter";
+                return;
+            }
+
+            if (profil && profil.role === 'admin') {
+                window.location.href = 'index.html';
+            } else {
+                window.location.href = 'colis.html';
+            }
+        });
+
+        async function inscription() {
+            const email = await demanderSaisie({
+                title: 'Créer un compte',
+                message: 'Saisissez votre adresse email pour commencer.',
+                confirmText: 'Continuer',
+                input: { type: 'email', placeholder: 'nom@exemple.com', autocomplete: 'email' }
+            });
+            if (!email) return;
+
+            const password = await demanderSaisie({
+                title: 'Choisir un mot de passe',
+                message: 'Utilisez au moins 6 caractères pour sécuriser votre compte.',
+                confirmText: 'Créer mon compte',
+                input: { type: 'password', placeholder: '6 caractères minimum', autocomplete: 'new-password', minLength: 6 }
+            });
+            if (!email || !password) return;
+
+            const { error } = await supabaseClient.auth.signUp({ email, password });
+            if (error) afficherNotification("Erreur : " + error.message, 'error');
+            else afficherNotification("Inscription réussie ! Connectez-vous maintenant.", 'success');
+        }
+    </script>
+</body>
+</html>

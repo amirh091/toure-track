@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 60" role="img" aria-labelledby="title">
+  <title id="title">TOURE-TRACK</title>
+  <rect width="300" height="60" rx="8" fill="#0f172a"/>
+  <g transform="translate(10 9)">
+    <rect width="18" height="18" rx="4" fill="#3b82f6"/>
+    <rect x="22" width="18" height="18" rx="4" fill="#22c55e"/>
+    <rect x="44" width="18" height="18" rx="4" fill="#eab308"/>
+    <rect y="22" width="18" height="18" rx="4" fill="#ef4444"/>
+    <rect x="22" y="22" width="18" height="18" rx="4" fill="#a855f7"/>
+    <rect x="44" y="22" width="18" height="18" rx="4" fill="#06b6d4"/>
+  </g>
+  <rect x="80" y="11" width="2" height="38" rx="1" fill="#eab308"/>
+  <text x="94" y="38" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="800" fill="#ffffff" letter-spacing=".5">TOURE-TRACK</text>
+</svg>

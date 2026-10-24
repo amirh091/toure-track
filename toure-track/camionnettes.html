@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/app-icon-180.png">
+    <link rel="icon" type="image/svg+xml" href="assets/app-icon.svg">
+    <title>TOURE-TRACK - Camionnettes</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <button class="menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="sidebar" aria-expanded="false" onclick="toggleMenu()">☰</button>
+    <aside class="sidebar" id="sidebar">
+        <div class="logo" style="justify-content: center;">
+            <img src="assets/logo-toure-track-sidebar.svg" alt="TOURE-TRACK" style="height: 40px; width: auto;">
+        </div>
+        <nav>
+            <a href="index.html">📊 Tableau de bord</a>
+            <a href="colis.html">📦 Colis</a>
+            <a href="camionnettes.html" class="active">🚐 Camionnettes</a>
+            <a href="employes.html">👨‍✈️ Employés</a>
+            <a href="parametres.html">⚙️ Paramètres</a>
+            <a href="#" onclick="deconnexion(event)" style="color: #f87171; margin-top: auto;">🚪 Déconnexion</a>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <header>
+            <h1>Gestion des Camionnettes</h1>
+            <button class="btn btn-primary" onclick="ouvrirModalCamion()">+ Ajouter une camionnette</button>
+        </header>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nom</th>
+                        <th>Plaque d'immatriculation</th>
+                        <th>Date d'ajout</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="liste-camions">
+                    <!-- Rempli par le JS -->
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- MODAL D'AJOUT -->
+    <div id="modal-camion" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Ajouter une camionnette</h2>
+            <form id="form-camion">
+                <div class="form-group">
+                    <label>Nom de la camionnette *</label>
+                    <input type="text" id="nom-camion" placeholder="Ex: Camion A" required>
+                </div>
+                <div class="form-group">
+                    <label>Plaque d'immatriculation</label>
+                    <input type="text" id="plaque-camion" placeholder="Ex: AB-123-CD">
+                </div>
+                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-outline" onclick="fermerModalCamion()">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script>
+        let user = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!(await verifierAdmin())) return;
+
+            const { data: { user: authUser } } = await supabaseClient.auth.getUser();
+            user = authUser;
+            chargerCamions();
+        });
+
+        async function chargerCamions() {
+            const { data, error } = await supabaseClient
+                .from('camionnettes')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (error) return console.error(error);
+            
+            const tbody = document.getElementById('liste-camions');
+            if (data.length === 0) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.className = 'empty-state';
+                cell.colSpan = 4;
+                cell.textContent = 'Aucune camionnette. Cliquez sur "Ajouter" pour commencer.';
+                cell.style.textAlign = 'center';
+                cell.style.color = '#666';
+                row.appendChild(cell);
+                tbody.replaceChildren(row);
+                return;
+            }
+
+            const rows = data.map(c => {
+                const row = document.createElement('tr');
+                const addCell = (label, value) => {
+                    const cell = document.createElement('td');
+                    cell.dataset.label = label;
+                    if (value instanceof Node) {
+                        cell.appendChild(value);
+                    } else {
+                        cell.textContent = value;
+                    }
+                    row.appendChild(cell);
+                };
+
+                const name = document.createElement('strong');
+                name.textContent = c.nom || '';
+                addCell('Nom', name);
+                addCell('Plaque', c.plaque || 'Non renseignée');
+
+                const date = new Date(c.created_at);
+                addCell('Date', Number.isNaN(date.getTime()) ? 'Date inconnue' : date.toLocaleDateString('fr-FR'));
+
+                const action = document.createElement('button');
+                action.type = 'button';
+                action.className = 'btn btn-danger';
+                action.style.cssText = 'padding: 0.3rem 0.8rem; font-size: 0.8rem;';
+                action.textContent = 'Supprimer';
+                action.addEventListener('click', () => window.supprimerCamion(c.id));
+                addCell('Actions', action);
+
+                return row;
+            });
+            tbody.replaceChildren(...rows);
+        }
+
+        document.getElementById('form-camion').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.textContent = "Enregistrement...";
+            btn.disabled = true;
+
+            const nom = document.getElementById('nom-camion').value;
+            const plaque = document.getElementById('plaque-camion').value;
+
+            const { error } = await supabaseClient.from('camionnettes').insert([{
+                user_id: user.id,
+                nom: nom,
+                plaque: plaque
+            }]);
+
+            if (error) {
+                afficherNotification("Erreur : " + error.message, 'error');
+            } else {
+                fermerModalCamion();
+                document.getElementById('form-camion').reset();
+                chargerCamions();
+                afficherNotification("La camionnette a bien été ajoutée.", 'success');
+            }
+            btn.textContent = "Enregistrer";
+            btn.disabled = false;
+        });
+
+        window.ouvrirModalCamion = () => document.getElementById('modal-camion').classList.add('active');
+        window.fermerModalCamion = () => document.getElementById('modal-camion').classList.remove('active');
+
+        window.supprimerCamion = async (id) => {
+            if (!await confirmerAction({
+                title: 'Supprimer cette camionnette ?',
+                message: 'Cette action est définitive. La camionnette sera retirée de votre flotte.',
+                confirmText: 'Supprimer',
+                danger: true
+            })) return;
+            const { error } = await supabaseClient.from('camionnettes').delete().eq('id', id);
+            if (error) afficherNotification("Erreur : " + error.message, 'error');
+            else {
+                chargerCamions();
+                afficherNotification("La camionnette a été supprimée.", 'success');
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/app-icon-180.png">
+    <link rel="icon" type="image/svg+xml" href="assets/app-icon.svg">
+    <title>TOURE-TRACK - Gestion des Colis</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Bibliothèque pour scanner les codes-barres -->
+    <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js" defer></script>
+    <style>
+        .scanner-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2000; flex-direction: column; align-items: center; justify-content: center; }
+        .scanner-container.active { display: flex; }
+        #interactive { width: 100%; max-width: 500px; height: 300px; background: black; position: relative; }
+        .badge-en_attente { background: #e2e8f0; color: #475569; }
+        .badge-charge { background: #fef3c7; color: #d97706; }
+        .badge-livre { background: #d1fae5; color: #059669; }
+        .badge-incident { background: #fee2e2; color: #dc2626; }
+    </style>
+</head>
+<body>
+    <button class="menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="sidebar" aria-expanded="false" onclick="toggleMenu()">☰</button>
+    <aside class="sidebar" id="sidebar">
+        <div class="logo" style="justify-content: center;">
+            <img src="assets/logo-toure-track-sidebar.svg" alt="TOURE-TRACK" style="height: 40px; width: auto;">
+        </div>
+        <nav>
+            <a href="index.html">📊 Tableau de bord</a>
+            <a href="colis.html" class="active">📦 Colis</a>
+            <a href="camionnettes.html">🚐 Camionnettes</a>
+            <a href="employes.html">👨‍✈️ Employés</a>
+            <a href="parametres.html">⚙️ Paramètres</a>
+            <a href="#" onclick="deconnexion(event)" style="color: #f87171; margin-top: auto;">🚪 Déconnexion</a>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <header>
+            <h1>Gestion des Colis</h1>
+            <div class="header-actions" style="display: flex; gap: 1rem;">
+                <button class="btn btn-accent" onclick="ouvrirScanner()">📷 Scanner un colis</button>
+                <button class="btn btn-primary" onclick="ouvrirModalColis()">+ Nouveau colis</button>
+            </div>
+        </header>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>N° de suivi</th>
+                        <th>Description</th>
+                        <th>Camionnette</th>
+                        <th>Chauffeur</th>
+                        <th>Statut</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="liste-colis">
+                    <!-- Rempli par le JS -->
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- MODAL AJOUT COLIS -->
+    <div id="modal-colis" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Enregistrer un nouveau colis</h2>
+            <form id="form-colis">
+                <div class="form-group">
+                    <label>Numéro de suivi (code-barres) *</label>
+                    <input type="text" id="num-suivi" placeholder="Ex: COLIS-123456" required>
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <input type="text" id="desc-colis" placeholder="Ex: Carton fragile, 2kg">
+                </div>
+                <div class="form-group">
+                    <label>Assigner à une camionnette *</label>
+                    <select id="select-camion" required>
+                        <option value="">Choisir...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Assigner à un chauffeur</label>
+                    <select id="select-chauffeur">
+                        <option value="">Choisir...</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-outline" onclick="fermerModalColis()">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL SCANNER -->
+    <div id="scanner-container" class="scanner-container">
+        <h2 style="color: white; margin-bottom: 1rem;">Scannez le code-barres du colis</h2>
+        <div id="interactive"></div>
+        <button class="btn btn-outline" style="margin-top: 1rem; border-color: white; color: white;" onclick="fermerScanner()">Annuler</button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+        <!-- MODAL PREUVE DE LIVRAISON -->
+    <div id="modal-preuve" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <h2 style="color: var(--primary); margin-bottom: 1rem;">Preuve de livraison</h2>
+            <p style="margin-bottom: 1rem; color: var(--text-muted);">Veuillez prendre une photo du colis et faire signer le client.</p>
+            
+            <form id="form-preuve">
+                <input type="hidden" id="preuve-colis-id">
+                
+                <div class="form-group">
+                    <label>1. Photo du colis *</label>
+                    <input type="file" id="preuve-photo" accept="image/*" capture="environment" required style="border: 1px solid #ccc; padding: 0.5rem; border-radius: 8px; width: 100%;">
+                </div>
+
+                <div class="form-group">
+                    <label>2. Signature du client *</label>
+                    <div style="border: 2px dashed #ccc; border-radius: 8px; background: #f9f9f9; position: relative;">
+                        <canvas id="canvas-signature" style="width: 100%; height: 150px; cursor: crosshair;"></canvas>
+                        <button type="button" onclick="effacerSignature()" style="position: absolute; top: 5px; right: 5px; padding: 0.2rem 0.5rem; font-size: 0.8rem; cursor: pointer; background: white; border: 1px solid #ccc; border-radius: 4px;">Effacer</button>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-outline" onclick="fermerModalPreuve()">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Valider la livraison</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        let user = null;
+        let estAdmin = false;
+        let camionsList = [];
+        let colisList = [];
+        let scannerPret = false;
+        let detectionCodeBarres = null;
+
+        window.ouvrirModalColis = () => {
+            document.getElementById('modal-colis').classList.add('active');
+        };
+
+        window.fermerModalColis = () => {
+            document.getElementById('modal-colis').classList.remove('active');
+        };
+
+        window.ouvrirScanner = () => {
+            const scannerContainer = document.getElementById('scanner-container');
+            const zoneScanner = document.getElementById('interactive');
+
+            if (!window.Quagga) {
+                afficherNotification("Le scanner n'est pas disponible. Vérifiez votre connexion puis rechargez la page.", 'warning');
+                return;
+            }
+
+            scannerContainer.classList.add('active');
+            detectionCodeBarres = result => {
+                const numeroSuivi = result && result.codeResult && result.codeResult.code;
+                if (!numeroSuivi) return;
+
+                document.getElementById('num-suivi').value = numeroSuivi;
+                window.fermerScanner();
+                window.ouvrirModalColis();
+            };
+            window.Quagga.onDetected(detectionCodeBarres);
+
+            window.Quagga.init({
+                inputStream: {
+                    name: 'Live',
+                    type: 'LiveStream',
+                    target: zoneScanner,
+                    constraints: { facingMode: 'environment' }
+                },
+                decoder: {
+                    readers: ['ean_reader', 'ean_8_reader', 'code_128_reader', 'code_39_reader', 'upc_reader', 'upc_e_reader']
+                }
+            }, error => {
+                if (error) {
+                    console.error("Erreur d'initialisation du scanner :", error);
+                    window.fermerScanner();
+                    afficherNotification("Impossible de démarrer le scanner. Vérifiez l'autorisation d'accès à la caméra.", 'error');
+                    return;
+                }
+
+                scannerPret = true;
+                try {
+                    window.Quagga.start();
+                } catch (startError) {
+                    console.error("Erreur de démarrage du scanner :", startError);
+                    window.fermerScanner();
+                    afficherNotification("Impossible de démarrer le scanner. Vérifiez l'autorisation d'accès à la caméra.", 'error');
+                }
+            });
+        };
+
+        window.fermerScanner = () => {
+            if (detectionCodeBarres && window.Quagga && window.Quagga.offDetected) {
+                window.Quagga.offDetected(detectionCodeBarres);
+                detectionCodeBarres = null;
+            }
+            if (scannerPret && window.Quagga) {
+                window.Quagga.stop();
+                scannerPret = false;
+            }
+            document.getElementById('scanner-container').classList.remove('active');
+            document.getElementById('interactive').replaceChildren();
+        };
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 1. Vérifier la connexion
+            const { data: { user: authUser }, error: authError } = await supabaseClient.auth.getUser();
+            
+            if (authError || !authUser) {
+                afficherNotification("Vous devez être connecté pour voir cette page.", 'warning');
+                window.setTimeout(() => { window.location.href = 'connexion.html'; }, 1500);
+                return;
+            }
+            user = authUser;
+
+            const { data: profil, error: profilError } = await supabaseClient
+                .from('profils')
+                .select('role')
+                .eq('user_id', user.id)
+                .single();
+
+            if (profilError) {
+                console.error("Erreur de chargement du profil :", profilError);
+                afficherNotification("Erreur : impossible de vérifier votre rôle.", 'error');
+                window.setTimeout(() => { window.location.href = 'connexion.html'; }, 1500);
+                return;
+            }
+            estAdmin = Boolean(profil && profil.role === 'admin');
+
+            if (!estAdmin) {
+                document.querySelector('a[href="index.html"]').style.display = 'none';
+                document.querySelector('button[onclick="ouvrirModalColis()"]').style.display = 'none';
+                document.querySelector('a[href="camionnettes.html"]').style.display = 'none';
+                document.querySelector('a[href="employes.html"]').style.display = 'none';
+                document.querySelector('a[href="parametres.html"]').style.display = 'none';
+            }
+
+            // 2. Charger les camions
+            const { data: camions, error: camError } = await supabaseClient
+                .from('camionnettes')
+                .select('*')
+                .eq('user_id', user.id);
+
+            if (camError) {
+                console.error("Erreur de chargement des camions :", camError);
+                afficherNotification("Erreur : impossible de charger les camionnettes.", 'error');
+            } else {
+                camionsList = camions || [];
+                const select = document.getElementById('select-camion');
+                select.innerHTML = '<option value="">Choisir...</option>'; // On nettoie
+                
+                if (camionsList.length === 0) {
+                    select.innerHTML = '<option value="">Aucune camionnette (ajoutez-en une !)</option>';
+                } else {
+                    camionsList.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c.id;
+                        opt.textContent = c.nom;
+                        select.appendChild(opt);
+                    });
+                }
+            }
+
+            // 3. Charger les chauffeurs
+            const { data: chauffeurs, error: chauffeurError } = await supabaseClient
+                .from('chauffeurs')
+                .select('*')
+                .eq('user_id', user.id);
+
+            if (chauffeurError) {
+                console.error("Erreur de chargement des chauffeurs :", chauffeurError);
+                afficherNotification("Erreur : impossible de charger les chauffeurs.", 'error');
+            } else if (chauffeurs) {
+                const selectChauffeur = document.getElementById('select-chauffeur');
+                chauffeurs.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.nom;
+                    selectChauffeur.appendChild(opt);
+                });
+            }
+
+            // 4. Charger les colis
+            chargerColis();
+        });
+
+        async function chargerColis() {
+            let requeteColis = supabaseClient
+                .from('colis')
+                .select('*, camionnettes(nom), chauffeurs(nom)')
+                .order('created_at', { ascending: false });
+
+            requeteColis = estAdmin
+                ? requeteColis.eq('user_id', user.id)
+                : requeteColis.eq('chauffeur_id', user.id);
+
+            const { data, error } = await requeteColis;
+            if (error) return console.error(error);
+            colisList = data;
+
+            const tbody = document.getElementById('liste-colis');
+            if (data.length === 0) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.className = 'empty-state';
+                cell.colSpan = 6;
+                cell.textContent = 'Aucun colis enregistré.';
+                cell.style.textAlign = 'center';
+                cell.style.color = '#666';
+                row.appendChild(cell);
+                tbody.replaceChildren(row);
+                return;
+            }
+
+            const rows = data.map(c => {
+                let badgeClass = 'badge-en_attente';
+                let badgeText = 'En attente';
+                if (c.statut === 'charge') { badgeClass = 'badge-charge'; badgeText = 'Chargé'; }
+                if (c.statut === 'livre') { badgeClass = 'badge-livre'; badgeText = 'Livré'; }
+                if (c.statut === 'incident') { badgeClass = 'badge-incident'; badgeText = 'Incident'; }
+
+                const row = document.createElement('tr');
+                const addCell = (label, content) => {
+                    const cell = document.createElement('td');
+                    cell.dataset.label = label;
+                    if (content instanceof Node) {
+                        cell.appendChild(content);
+                    } else {
+                        cell.textContent = content;
+                    }
+                    row.appendChild(cell);
+                };
+
+                const trackingNumber = document.createElement('strong');
+                trackingNumber.textContent = c.numero_suivi || '';
+                addCell('Numéro', trackingNumber);
+                addCell('Description', c.description || '-');
+                addCell('Camionnette', c.camionnettes ? c.camionnettes.nom || '-' : '-');
+                addCell('Chauffeur', c.chauffeurs ? c.chauffeurs.nom || '-' : '-');
+
+                const statusBadge = document.createElement('span');
+                statusBadge.className = `badge ${badgeClass}`;
+                statusBadge.textContent = badgeText;
+                addCell('Statut', statusBadge);
+
+                const actionCell = document.createElement('td');
+                actionCell.dataset.label = 'Actions';
+                const actionButton = document.createElement('button');
+                actionButton.className = c.statut === 'livre' ? 'btn btn-outline' : 'btn btn-primary';
+                actionButton.style.cssText = c.statut === 'livre'
+                    ? 'padding: 0.3rem 0.6rem; font-size: 0.8rem; border-color: var(--success); color: var(--success);'
+                    : 'padding: 0.3rem 0.6rem; font-size: 0.8rem;';
+                actionButton.textContent = c.statut === 'livre' ? '👁️ Voir la preuve' : 'Marquer Livré';
+                actionButton.addEventListener('click', () => {
+                    if (c.statut === 'livre') {
+                        window.voirPreuve(c.id);
+                    } else {
+                        window.marquerLivre(c.id);
+                    }
+                });
+                actionCell.appendChild(actionButton);
+                row.appendChild(actionCell);
+
+                return row;
+            });
+            tbody.replaceChildren(...rows);
+        }
+
+        // Formulaire d'ajout
+        document.getElementById('form-colis').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.textContent = "Enregistrement...";
+            btn.disabled = true;
+
+            const { error } = await supabaseClient.from('colis').insert([{
+                user_id: user.id,
+                numero_suivi: document.getElementById('num-suivi').value,
+                description: document.getElementById('desc-colis').value,
+                camionnette_id: document.getElementById('select-camion').value,
+                chauffeur_id: document.getElementById('select-chauffeur').value || null,
+                statut: 'en_attente'
+            }]);
+
+            if (error) {
+                afficherNotification("Erreur : " + error.message, 'error');
+            } else {
+                fermerModalColis();
+                document.getElementById('form-colis').reset();
+                chargerColis();
+                afficherNotification("Le colis a bien été enregistré.", 'success');
+            }
+            btn.textContent = "Enregistrer";
+            btn.disabled = false;
+        });
+
+        // Gestion de la signature
+        let canvas, ctx, dessin = false;
+
+        function initSignature() {
+            canvas = document.getElementById('canvas-signature');
+            ctx = canvas.getContext('2d');
+            // Ajuster la taille du canvas
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = '#1e3a8a'; // Bleu foncé
+
+            canvas.addEventListener('mousedown', (e) => { dessin = true; ctx.beginPath(); ctx.moveTo(e.offsetX, e.offsetY); });
+            canvas.addEventListener('mousemove', (e) => { if (dessin) { ctx.lineTo(e.offsetX, e.offsetY); ctx.stroke(); } });
+            canvas.addEventListener('mouseup', () => dessin = false);
+            canvas.addEventListener('mouseout', () => dessin = false);
+            
+            // Pour le tactile (téléphone)
+            canvas.addEventListener('touchstart', (e) => { 
+                e.preventDefault(); 
+                dessin = true; 
+                const rect = canvas.getBoundingClientRect();
+                ctx.beginPath(); 
+                ctx.moveTo(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top); 
+            });
+            canvas.addEventListener('touchmove', (e) => { 
+                e.preventDefault(); 
+                if (dessin) { 
+                    const rect = canvas.getBoundingClientRect();
+                    ctx.lineTo(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top); 
+                    ctx.stroke(); 
+                } 
+            });
+            canvas.addEventListener('touchend', (e) => { e.preventDefault(); dessin = false; });
+        }
+
+        function effacerSignature() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Ouvrir le modal de preuve
+        window.marquerLivre = (id) => {
+            document.getElementById('preuve-colis-id').value = id;
+            document.getElementById('modal-preuve').classList.add('active');
+            setTimeout(initSignature, 100); // Attendre que le modal s'affiche
+        };
+
+        window.fermerModalPreuve = () => {
+            document.getElementById('modal-preuve').classList.remove('active');
+            document.getElementById('form-preuve').reset();
+            effacerSignature();
+        };
+
+        // Soumission de la preuve
+        document.getElementById('form-preuve').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.textContent = "Envoi...";
+            btn.disabled = true;
+
+            const colisId = document.getElementById('preuve-colis-id').value;
+            const photoFile = document.getElementById('preuve-photo').files[0];
+            
+            // Vérifier si le client a signé
+            const blank = document.createElement('canvas');
+            blank.width = canvas.width;
+            blank.height = canvas.height;
+            if (canvas.toDataURL() === blank.toDataURL()) {
+                afficherNotification("Veuillez faire signer le client.", 'warning');
+                btn.textContent = "Valider la livraison";
+                btn.disabled = false;
+                return;
+            }
+
+            try {
+                // 1. Upload de la photo dans Supabase Storage
+                // (Pour l'instant, on stocke l'image en base64 si le bucket n'est pas prêt, ou on l'upload)
+                let photoUrl = null;
+                if (photoFile) {
+                    const fileName = `preuve-${colisId}-${Date.now()}.jpg`;
+                    const { error: uploadError } = await supabaseClient.storage.from('preuves').upload(fileName, photoFile);
+                    if (!uploadError) {
+                        const { data: urlData } = supabaseClient.storage.from('preuves').getPublicUrl(fileName);
+                        photoUrl = urlData.publicUrl;
+                    }
+                }
+
+                // 2. Récupérer la signature (en base64)
+                const signatureBase64 = canvas.toDataURL('image/png');
+
+                // 3. Mettre à jour le colis
+                const { error } = await supabaseClient.from('colis').update({
+                    statut: 'livre',
+                    date_livraison: new Date(),
+                    photo_preuve: photoUrl, // Si l'upload a marché
+                    signature_client: signatureBase64
+                }).eq('id', colisId);
+
+                if (error) throw error;
+
+                afficherNotification("Livraison validée avec succès !", 'success');
+                fermerModalPreuve();
+                chargerColis();
+
+            } catch (err) {
+                afficherNotification("Erreur : " + err.message, 'error');
+            } finally {
+                btn.textContent = "Valider la livraison";
+                btn.disabled = false;
+            }
+        });
+
+        window.voirPreuve = (id) => {
+            const colis = colisList.find(c => String(c.id) === String(id));
+            if (!colis) return;
+
+            const modal = document.createElement('div');
+            modal.className = 'modal active';
+
+            const content = document.createElement('div');
+            content.className = 'modal-content';
+            content.style.maxWidth = '600px';
+            content.style.maxHeight = '80vh';
+            content.style.overflowY = 'auto';
+
+            const title = document.createElement('h3');
+            title.textContent = `Preuve de livraison pour ${colis.numero_suivi}`;
+            title.style.marginBottom = '1rem';
+            content.appendChild(title);
+
+            const addProofImage = (label, source, alt) => {
+                const description = document.createElement('p');
+                const labelText = document.createElement('strong');
+                labelText.textContent = label;
+                description.appendChild(labelText);
+                content.appendChild(description);
+
+                let imageSource = null;
+                if (typeof source === 'string' && source.startsWith('data:image/png;base64,')) {
+                    if (/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(source)) {
+                        imageSource = source;
+                    }
+                } else if (typeof source === 'string') {
+                    try {
+                        const parsedUrl = new URL(source, window.location.href);
+                        if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') {
+                            imageSource = parsedUrl.href;
+                        }
+                    } catch (error) {
+                        console.warn("URL de preuve invalide :", error);
+                    }
+                }
+
+                if (imageSource) {
+                    const image = document.createElement('img');
+                    image.src = imageSource;
+                    image.alt = alt;
+                    image.style.maxWidth = '100%';
+                    image.style.borderRadius = '8px';
+                    image.style.marginBottom = '1rem';
+                    if (alt === 'Signature du client') {
+                        image.style.border = '1px solid #ccc';
+                    }
+                    content.appendChild(image);
+                } else {
+                    const message = document.createElement('p');
+                    message.textContent = `Aucune ${alt === 'Photo du colis' ? 'photo' : 'signature'} enregistrée.`;
+                    message.style.color = '#d32f2f';
+                    content.appendChild(message);
+                }
+            };
+
+            addProofImage('Photo du colis :', colis.photo_preuve, 'Photo du colis');
+            addProofImage('Signature du client :', colis.signature_client, 'Signature du client');
+
+            const actions = document.createElement('div');
+            actions.style.marginTop = '1.5rem';
+            actions.style.textAlign = 'right';
+
+            const closeButton = document.createElement('button');
+            closeButton.className = 'btn btn-primary';
+            closeButton.textContent = 'Fermer';
+            closeButton.addEventListener('click', () => modal.remove());
+            actions.appendChild(closeButton);
+            content.appendChild(actions);
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+        };
+    </script>
+</body>
+</html>

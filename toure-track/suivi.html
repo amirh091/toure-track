@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/app-icon-180.png">
+    <link rel="icon" type="image/svg+xml" href="assets/app-icon.svg">
+    <title>TOURE-TRACK - Suivi de colis</title>
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        body { display: flex; justify-content: center; align-items: center; min-height: 100vh; min-height: 100dvh; background: var(--bg); padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); }
+        .track-box { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: min(100%, 500px); }
+        .track-box input { width: 100%; padding: 0.8rem; margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 8px; }
+        .track-box button { width: 100%; }
+        .resultat { margin-top: 1.5rem; }
+        .resultat img { max-width: 100%; border-radius: 8px; border: 1px solid #ccc; margin-top: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="track-box">
+        <div style="text-align: center; margin-bottom: 1.5rem;">
+            <img src="assets/logo-toure-track-sidebar.svg" alt="TOURE-TRACK" style="height: 40px; width: auto; background: var(--primary); border-radius: 8px;">
+        </div>
+        <h2 style="color: var(--primary); text-align: center; margin-bottom: 1.5rem;">Suivi de colis</h2>
+        <p style="text-align: center; margin-bottom: 1rem; color: var(--text-muted);">Entrez votre numéro de suivi pour voir l'état de votre livraison.</p>
+        
+        <form id="form-suivi">
+            <input type="text" id="num-suivi" placeholder="Ex: COLIS-001" required>
+            <button type="submit" class="btn btn-primary">Vérifier</button>
+        </form>
+
+        <div id="resultat" class="resultat"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script>
+        document.getElementById('form-suivi').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const numSuivi = document.getElementById('num-suivi').value.trim();
+            const resultat = document.getElementById('resultat');
+            const messageRecherche = document.createElement('p');
+            messageRecherche.textContent = 'Recherche en cours...';
+            resultat.replaceChildren(messageRecherche);
+
+            // On cherche le colis par son numéro de suivi (sans filtre user_id, car c'est public)
+            const { data, error } = await supabaseClient
+                .from('colis')
+                .select('numero_suivi, statut, date_livraison, signature_client, photo_preuve')
+                .eq('numero_suivi', numSuivi)
+                .maybeSingle();
+
+            if (error || !data) {
+                const messageErreur = document.createElement('p');
+                messageErreur.textContent = 'Aucun colis trouvé pour ce numéro.';
+                messageErreur.style.color = '#d32f2f';
+                resultat.replaceChildren(messageErreur);
+                return;
+            }
+
+            resultat.replaceChildren();
+            const titre = document.createElement('h3');
+            titre.textContent = `Colis ${data.numero_suivi || ''}`;
+            titre.style.color = 'var(--primary)';
+            titre.style.marginBottom = '1rem';
+            resultat.appendChild(titre);
+
+            const statut = document.createElement('p');
+            const libelleStatut = document.createElement('strong');
+            libelleStatut.textContent = 'Statut : ';
+            statut.append(libelleStatut, document.createTextNode(data.statut || 'Inconnu'));
+            resultat.appendChild(statut);
+
+            if (data.statut === 'livre') {
+                const dateLivraison = new Date(data.date_livraison);
+                const dateTexte = Number.isNaN(dateLivraison.getTime())
+                    ? 'date inconnue'
+                    : dateLivraison.toLocaleDateString('fr-FR');
+                const confirmation = document.createElement('p');
+                confirmation.textContent = `✅ Ce colis a été livré le ${dateTexte}.`;
+                confirmation.style.color = 'var(--success)';
+                confirmation.style.fontWeight = 'bold';
+                resultat.appendChild(confirmation);
+                
+                if (data.signature_client) {
+                    ajouterImagePreuve('Signature du destinataire :', data.signature_client, 'Signature');
+                }
+                
+                if (data.photo_preuve) {
+                    ajouterImagePreuve('Photo de la livraison :', data.photo_preuve, 'Photo preuve');
+                }
+            } else {
+                const progression = document.createElement('p');
+                progression.textContent = '⏳ Ce colis est en cours de traitement.';
+                progression.style.color = 'var(--accent)';
+                resultat.appendChild(progression);
+            }
+        });
+
+        function ajouterImagePreuve(label, source, alt) {
+            let imageSource = null;
+            if (typeof source === 'string' && source.startsWith('data:image/png;base64,')) {
+                if (/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/.test(source)) {
+                    imageSource = source;
+                }
+            } else if (typeof source === 'string') {
+                try {
+                    const parsedUrl = new URL(source, window.location.href);
+                    if (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') {
+                        imageSource = parsedUrl.href;
+                    }
+                } catch (error) {
+                    console.warn("URL de preuve invalide :", error);
+                }
+            }
+
+            if (!imageSource) return;
+
+            const labelElement = document.createElement('p');
+            const strong = document.createElement('strong');
+            strong.textContent = label;
+            labelElement.appendChild(strong);
+            document.getElementById('resultat').appendChild(labelElement);
+
+            const image = document.createElement('img');
+            image.src = imageSource;
+            image.alt = alt;
+            image.referrerPolicy = 'no-referrer';
+            document.getElementById('resultat').appendChild(image);
+        }
+    </script>
+</body>
+</html>

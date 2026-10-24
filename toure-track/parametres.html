@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/app-icon-180.png">
+    <link rel="icon" type="image/svg+xml" href="assets/app-icon.svg">
+    <title>TOURE-TRACK - Paramètres</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <button class="menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="sidebar" aria-expanded="false" onclick="toggleMenu()">☰</button>
+    <aside class="sidebar" id="sidebar">
+        <div class="logo" style="justify-content: center;">
+            <img src="assets/logo-toure-track-sidebar.svg" alt="TOURE-TRACK" style="height: 40px; width: auto;">
+        </div>
+        <nav>
+            <a href="index.html">📊 Tableau de bord</a>
+            <a href="colis.html">📦 Colis</a>
+            <a href="camionnettes.html">🚐 Camionnettes</a>
+            <a href="employes.html">👨‍✈️ Employés</a>
+            <a href="parametres.html" class="active">⚙️ Paramètres</a>
+            <a href="#" onclick="deconnexion(event)" style="color: #f87171; margin-top: auto;">🚪 Déconnexion</a>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <header>
+            <h1>Paramètres</h1>
+        </header>
+
+        <div style="background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); max-width: 600px;">
+            <h2 style="color: #dc2626; margin-bottom: 1rem;">Zone de danger</h2>
+            <p style="margin-bottom: 1.5rem; color: var(--text-muted);">
+                Cette action supprimera définitivement toutes vos camionnettes, vos chauffeurs et tous les colis (y compris les preuves de livraison). 
+                <strong>Votre compte administrateur et vos employés seront conservés.</strong>
+            </p>
+            <button class="btn btn-danger" style="width: 100%;" onclick="reinitialiserDonnees()">
+                ⚠️ Remettre toutes les données à zéro
+            </button>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            await verifierAdmin();
+        });
+
+        async function reinitialiserDonnees() {
+            const confirmation = await confirmerAction({
+                title: 'Réinitialiser toutes les données ?',
+                message: 'Cette action est irréversible et supprimera toutes les données de votre espace.',
+                confirmText: 'Continuer',
+                danger: true
+            });
+            if (!confirmation) return;
+
+            const confirmationFinale = await demanderSaisie({
+                title: 'Confirmation définitive',
+                message: "Pour confirmer la suppression, saisissez exactement le mot EFFACER.",
+                confirmText: 'Tout effacer',
+                danger: true,
+                input: {
+                    type: 'text',
+                    placeholder: 'EFFACER',
+                    autocomplete: 'off',
+                    expectedValue: 'EFFACER',
+                    validationMessage: "Saisissez exactement EFFACER pour confirmer."
+                }
+            });
+            if (confirmationFinale !== 'EFFACER') {
+                return;
+            }
+
+            const { error } = await supabaseClient.rpc('reinitialiser_toure_track');
+
+            if (error) {
+                afficherNotification("Erreur : " + error.message, 'error');
+            } else {
+                afficherNotification("Toutes les données ont été remises à zéro.", 'success');
+                window.setTimeout(() => { window.location.href = 'index.html'; }, 1600);
+            }
+        }
+    </script>
+</body>
+</html>

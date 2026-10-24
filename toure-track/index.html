@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/app-icon-180.png">
+    <link rel="icon" type="image/svg+xml" href="assets/app-icon.svg">
+    <title>TOURE-TRACK - Tableau de bord</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <button class="menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="sidebar" aria-expanded="false" onclick="toggleMenu()">☰</button>
+    <aside class="sidebar" id="sidebar">
+        <div class="logo" style="justify-content: center;">
+            <img src="assets/logo-toure-track-sidebar.svg" alt="TOURE-TRACK" style="height: 40px; width: auto;">
+        </div>
+        <nav>
+            <a href="index.html" class="active">📊 Tableau de bord</a>
+            <a href="colis.html">📦 Colis</a>
+            <a href="camionnettes.html">🚐 Camionnettes</a>
+            <a href="employes.html">👨‍✈️ Employés</a>
+            <a href="parametres.html">⚙️ Paramètres</a>
+            <a href="#" onclick="deconnexion(event)" style="color: #f87171; margin-top: auto;">🚪 Déconnexion</a>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <header>
+            <div>
+                <h1>Tableau de bord</h1>
+                <p id="horloge" class="app-clock"></p>
+            </div>
+            <div id="user-info" style="display: flex; align-items: center; gap: 10px;">
+                <span id="user-email" style="color: var(--text-muted);">Chargement...</span>
+                <span id="user-role-badge" class="badge" style="display: none;"></span>
+            </div>
+        </header>
+
+        <div class="grid-stats">
+            <div class="card">
+                <h3>Camionnettes</h3>
+                <div class="value" id="stat-camionnettes">0</div>
+            </div>
+            <div class="card" style="border-left-color: var(--accent);">
+                <h3>Colis en transit</h3>
+                <div class="value" id="stat-transit" style="color: var(--accent);">0</div>
+            </div>
+            <div class="card" style="border-left-color: var(--success);">
+                <h3>Colis livrés (aujourd'hui)</h3>
+                <div class="value" id="stat-livres" style="color: var(--success);">0</div>
+            </div>
+            <div class="card" style="border-left-color: var(--danger);">
+                <h3>Incidents</h3>
+                <div class="value" id="stat-incidents" style="color: var(--danger);">0</div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!(await verifierAdmin())) return;
+
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            document.getElementById('user-email').textContent = user.email;
+
+            const { data: profil, error: profilError } = await supabaseClient
+                .from('profils')
+                .select('role')
+                .eq('user_id', user.id)
+                .single();
+
+            if (profilError) {
+                console.error("Erreur de chargement du profil :", profilError);
+                afficherNotification("Erreur : impossible de charger votre rôle.", 'error');
+                return;
+            }
+
+            const roleBadge = document.getElementById('user-role-badge');
+            if (profil) {
+                if (profil.role === 'admin') {
+                    roleBadge.textContent = '👑 Admin';
+                    roleBadge.style.background = '#e0e7ff';
+                    roleBadge.style.color = '#3730a3';
+                } else {
+                    roleBadge.textContent = '👨‍✈️ Employé';
+                    roleBadge.style.background = '#fef3c7';
+                    roleBadge.style.color = '#d97706';
+                }
+                roleBadge.style.display = 'inline-block';
+            }
+
+            // Charger les statistiques
+            const { count: nbCamions } = await supabaseClient.from('camionnettes').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
+            document.getElementById('stat-camionnettes').textContent = nbCamions || 0;
+
+            const { count: nbTransit } = await supabaseClient.from('colis').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('statut', 'charge');
+            document.getElementById('stat-transit').textContent = nbTransit || 0;
+
+            // Colis livrés aujourd'hui uniquement
+            const aujourdhui = new Date();
+            aujourdhui.setHours(0, 0, 0, 0);
+
+            const { count: nbLivres } = await supabaseClient
+                .from('colis')
+                .select('*', { count: 'exact', head: true })
+                .eq('user_id', user.id)
+                .eq('statut', 'livre')
+                .gte('date_livraison', aujourdhui.toISOString());
+            document.getElementById('stat-livres').textContent = nbLivres || 0;
+        });
+    </script>
+</body>
+</html>

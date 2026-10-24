@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/app-icon-180.png">
+    <link rel="icon" type="image/svg+xml" href="assets/app-icon.svg">
+    <title>TOURE-TRACK - Employés</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <button class="menu-toggle" type="button" aria-label="Ouvrir le menu" aria-controls="sidebar" aria-expanded="false" onclick="toggleMenu()">☰</button>
+    <aside class="sidebar" id="sidebar">
+        <div class="logo" style="justify-content: center;">
+            <img src="assets/logo-toure-track-sidebar.svg" alt="TOURE-TRACK" style="height: 40px; width: auto;">
+        </div>
+        <nav>
+            <a href="index.html">📊 Tableau de bord</a>
+            <a href="colis.html">📦 Colis</a>
+            <a href="camionnettes.html">🚐 Camionnettes</a>
+            <a href="employes.html" class="active">👨‍✈️ Employés</a>
+            <a href="parametres.html">⚙️ Paramètres</a>
+            <a href="#" onclick="deconnexion(event)" style="color: #f87171; margin-top: auto;">🚪 Déconnexion</a>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <header>
+            <h1>Gestion des Employés</h1>
+            <button class="btn btn-primary" onclick="ouvrirModalEmploye()">+ Ajouter un employé</button>
+        </header>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nom</th>
+                        <th>Email</th>
+                        <th>Rôle</th>
+                        <th>Date de création</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="liste-employes">
+                    <!-- Rempli par le JS -->
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- MODAL D'AJOUT -->
+    <div id="modal-employe" class="modal">
+        <div class="modal-content">
+            <h2 style="color: var(--primary); margin-bottom: 1.5rem;">Créer un compte employé</h2>
+            <p style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.9rem;">L'employé pourra se connecter avec ces identifiants sur son téléphone.</p>
+            <form id="form-employe">
+                <div class="form-group">
+                    <label>Nom complet *</label>
+                    <input type="text" id="emp-nom" placeholder="Ex: Moussa Diop" required>
+                </div>
+                <div class="form-group">
+                    <label>Email *</label>
+                    <input type="email" id="emp-email" placeholder="Ex: moussa@toure-track.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Mot de passe *</label>
+                    <input type="password" id="emp-password" required minlength="6" placeholder="Min 6 caractères">
+                </div>
+                <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
+                    <button type="button" class="btn btn-outline" onclick="fermerModalEmploye()">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Créer le compte</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase-client.js"></script>
+    <script>
+        let user = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (!(await verifierAdmin())) return;
+
+            const { data: { user: authUser } } = await supabaseClient.auth.getUser();
+            user = authUser;
+            chargerEmployes();
+        });
+
+        async function chargerEmployes() {
+            const { data, error } = await supabaseClient
+                .from('profils')
+                .select('*')
+                .eq('role', 'employe')
+                .order('created_at', { ascending: false });
+
+            if (error) return console.error(error);
+            
+            const tbody = document.getElementById('liste-employes');
+            if (!data || data.length === 0) {
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.className = 'empty-state';
+                cell.colSpan = 5;
+                cell.textContent = 'Aucun employé pour le moment. Cliquez sur "Ajouter" pour en créer un.';
+                cell.style.textAlign = 'center';
+                cell.style.color = '#666';
+                row.appendChild(cell);
+                tbody.replaceChildren(row);
+                return;
+            }
+
+            const rows = data.map(e => {
+                const row = document.createElement('tr');
+                const addCell = (label, value) => {
+                    const cell = document.createElement('td');
+                    cell.dataset.label = label;
+                    if (value instanceof Node) {
+                        cell.appendChild(value);
+                    } else {
+                        cell.textContent = value;
+                    }
+                    row.appendChild(cell);
+                };
+
+                const name = document.createElement('strong');
+                name.textContent = e.nom || 'Non renseigné';
+                addCell('Nom', name);
+                addCell('Email', e.email || '-');
+
+                const roleBadge = document.createElement('span');
+                roleBadge.className = 'badge badge-charge';
+                roleBadge.textContent = 'Employé';
+                addCell('Rôle', roleBadge);
+
+                const date = new Date(e.created_at);
+                addCell('Date', Number.isNaN(date.getTime()) ? 'Date inconnue' : date.toLocaleDateString('fr-FR'));
+
+                const action = document.createElement('button');
+                action.type = 'button';
+                action.className = 'btn btn-danger';
+                action.style.cssText = 'padding: 0.3rem 0.6rem; font-size: 0.8rem;';
+                action.textContent = 'Supprimer';
+                action.addEventListener('click', () => window.supprimerEmploye(e.user_id));
+                addCell('Actions', action);
+
+                return row;
+            });
+            tbody.replaceChildren(...rows);
+        }
+
+        document.getElementById('form-employe').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.textContent = "Création...";
+            btn.disabled = true;
+
+            const nom = document.getElementById('emp-nom').value;
+            const email = document.getElementById('emp-email').value;
+            const password = document.getElementById('emp-password').value;
+
+            try {
+                // 1. Créer l'utilisateur dans Supabase Auth
+                const { data: authData, error: authError } = await supabaseClient.auth.signUp({ email, password });
+                
+                if (authError) throw authError;
+
+                // 2. Créer son profil avec le rôle 'employe'
+                const { error: profilError } = await supabaseClient.from('profils').insert([{
+                    user_id: authData.user.id,
+                    nom: nom,
+                    email: email,
+                    role: 'employe'
+                }]);
+
+                if (profilError) throw profilError;
+
+                afficherNotification("Compte employé créé avec succès ! Il peut maintenant se connecter avec ses identifiants.", 'success');
+                fermerModalEmploye();
+                document.getElementById('form-employe').reset();
+                chargerEmployes();
+
+            } catch (err) {
+                afficherNotification("Erreur : " + err.message, 'error');
+            } finally {
+                btn.textContent = "Créer le compte";
+                btn.disabled = false;
+            }
+        });
+
+        window.ouvrirModalEmploye = () => document.getElementById('modal-employe').classList.add('active');
+        window.fermerModalEmploye = () => document.getElementById('modal-employe').classList.remove('active');
+
+        window.supprimerEmploye = async (userId) => {
+            if (!await confirmerAction({
+                title: 'Supprimer cet employé ?',
+                message: 'Son profil sera supprimé, mais son compte de connexion restera actif.',
+                confirmText: 'Supprimer le profil',
+                danger: true
+            })) return;
+            const { error } = await supabaseClient.from('profils').delete().eq('user_id', userId);
+            if (error) afficherNotification("Erreur : " + error.message, 'error');
+            else {
+                chargerEmployes();
+                afficherNotification("Le profil employé a été supprimé.", 'success');
+            }
+        };
+    </script>
+</body>
+</html>
